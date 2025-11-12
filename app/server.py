@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, render_template
 from threading import Thread
 import uuid
+import json
 from .agent import IntellectAgent
 
 app = Flask(__name__)
@@ -56,10 +57,10 @@ def get_status(task_id):
         elif update.startswith("authorization_required:"):
             task['authorization_needed'] = True
             task['status'] = "awaiting_authorization"
-        elif update.startswith("report:"):
-            task['status'] = 'complete'
-            # In a real app, you'd parse this properly
-            task['report'] = update.replace("report: ", "")
+        elif update.startswith("final_update:"):
+            final_data = json.loads(update.replace("final_update: ", ""))
+            task['report'] = final_data['report']
+            task['status'] = final_data['status']
 
     except StopIteration:
         task['status'] = 'complete'

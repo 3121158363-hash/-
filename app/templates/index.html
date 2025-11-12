@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intellect-Agent</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Intellect-Agent</h1>
+            <p>Your Advanced Market Research Assistant</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="new-research-form">
+            <input type="text" id="topic-input" placeholder="Enter a research topic (e.g., 'the future of vertical farming')">
+            <button id="start-research-btn">Start Analysis</button>
+        </section>
+
+        <section id="research-feed">
+            <!-- Research task cards will be dynamically inserted here -->
+        </section>
+    </main>
+
+    <!-- Modal for Plugin Authorization -->
+    <div id="auth-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h2>Authorization Required</h2>
+            <p>The agent requires permission to use the <strong>Public Opinion Miner Plugin</strong> to continue.</p>
+            <div class="modal-actions">
+                <button id="authorize-btn">Authorize</button>
+                <button id="deny-btn">Deny</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

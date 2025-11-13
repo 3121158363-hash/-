@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import json
 from app.agent import IntellectAgent
 
@@ -10,6 +10,10 @@ def test_analyze_trends_deep_integration(mock_google_search):
     handles simulated structured API data.
     """
     # Arrange
+    mock_google_search.side_effect = [
+        [{"url": "trends.com", "snippet": "rising"}], # For primary trends search
+        [{"url": "news.com", "snippet": "Cross-validation confirms growth."}]   # For cross-validation search
+    ]
     agent = IntellectAgent("test topic")
 
     # Act
@@ -18,41 +22,25 @@ def test_analyze_trends_deep_integration(mock_google_search):
 
     # Assert
     assert "Data indicates a significant rising interest in 'test topic'." in report['macro_changes']
-    assert "Market growth is projected to be strong, driven by new technology." in report['macro_changes']
-    assert "innovation in test topic" in report['trending_keywords']
-    assert "test topic regulation" in report['trending_keywords']
+    assert "Cross-validation from news sources confirms: Cross-validation confirms growth." in report['macro_changes']
 
     mock_google_search.assert_any_call(query="structured Google Trends data for test topic")
-    mock_google_search.assert_any_call(query="expert analysis and market reports for test topic")
+    mock_google_search.assert_any_call(query='"test topic" market trends news')
 
 
 @patch('app.agent.google_search')
-def test_plugin_interface_logic(mock_google_search):
+def test_competitive_landscape_cross_validation(mock_google_search):
     """
-    Tests the refactored _mine_public_opinion method to ensure it correctly
-    processes the simulated output of a plugin.
-    """
-    # Arrange
-    agent = IntellectAgent("Test Topic")
-
-    # Act
-    list(agent._mine_public_opinion()) # Consume the generator
-    report = agent.report['public_opinion']
-
-    # Assert
-    assert "Users are requesting a more beginner-friendly tutorial." in report['unmet_needs']
-    assert "Frequent crashes on new hardware." in report['core_pain_points']
-    assert "Community Feature Requests" in report['high_frequency_topics']
-
-
-@patch('app.agent.google_search')
-def test_competitive_landscape_deep_integration(mock_google_search):
-    """
-    Tests the refactored _analyze_competition method to ensure it correctly
-    handles simulated structured financial data.
+    Tests the cross-validation logic in the _analyze_competition method.
     """
     # Arrange
-    mock_google_search.return_value = [{"url": "https://news.com/complaints", "title": "FutureTech Issues", "snippet": "Customers complain about FutureTech's product overheating."}]
+    mock_google_search.side_effect = [
+        [{"url": "markets.com", "snippet": "Top players."}], # For financial data
+        [{"url": "complaints.com", "snippet": "Primary issue."}], # For FutureTech complaints
+        [{"url": "news.com", "snippet": "Negative news."}], # For FutureTech news
+        [{"url": "complaints.com", "snippet": "Another issue."}], # For InnovateCorp complaints
+        [] # For InnovateCorp news (to test robustness)
+    ]
     agent = IntellectAgent("test topic")
 
     # Act
@@ -60,13 +48,12 @@ def test_competitive_landscape_deep_integration(mock_google_search):
     report = agent.report['competitive_landscape']
 
     # Assert
-    assert "FutureTech (Product: FutureOne, Market Share: 35.0%)" in report['top_players_and_products']
-    assert "InnovateCorp (Product: InnoPad, Market Share: 28.0%)" in report['top_players_and_products']
-    assert "FutureTech: Customers complain about FutureTech's product overheating." in report['negative_intelligence']
+    assert "Primary issues for FutureTech: Primary issue." in report['negative_intelligence']
+    assert "Cross-validation from news for FutureTech: Negative news." in report['negative_intelligence']
+    assert "Primary issues for InnovateCorp: Another issue." in report['negative_intelligence']
 
-    mock_google_search.assert_any_call(query='financial data and market share for test topic')
-    mock_google_search.assert_any_call(query='"FutureTech" "test topic" "complaints" OR "issues"')
-    mock_google_search.assert_any_call(query='"InnovateCorp" "test topic" "complaints" OR "issues"')
+    # Verify that the cross-validation search for InnovateCorp was still attempted
+    mock_google_search.assert_any_call(query='"InnovateCorp" "test topic" "negative news"')
 
 
 def test_enhanced_report_generation():
@@ -94,6 +81,37 @@ def test_enhanced_report_generation():
 
     # Ensure all 5 parts are still present
     assert all(k in report for k in ["executive_summary", "trends_analysis", "public_opinion", "competitive_landscape", "key_takeaways"])
+
+@patch('app.agent.os.path.exists', return_value=True)
+@patch('app.agent.importlib.util')
+def test_external_plugin_execution(mock_importlib_util, mock_path_exists):
+    """
+    Tests that the agent correctly discovers, loads, and executes a plugin.py file.
+    """
+    # Arrange
+    # Mock the plugin module and its function
+    mock_plugin_module = MagicMock()
+    mock_plugin_module.run_opinion_miner.return_value = {
+        "high_frequency_topics": ["From External Plugin"],
+        "core_pain_points": ["Plugin Pain Point"],
+        "unmet_needs": ["Plugin Unmet Need"]
+    }
+
+    # Configure the importlib mock to simulate a successful import
+    spec = MagicMock()
+    spec.loader.exec_module.return_value = None
+    mock_importlib_util.spec_from_file_location.return_value = spec
+    mock_importlib_util.module_from_spec.return_value = mock_plugin_module
+
+    agent = IntellectAgent("test topic")
+
+    # Act
+    list(agent._mine_public_opinion()) # Consume the generator
+    report = agent.report['public_opinion']
+
+    # Assert
+    assert report["high_frequency_topics"] == ["From External Plugin"]
+    mock_plugin_module.run_opinion_miner.assert_called_once()
 
 
 @patch('app.agent.google_search')

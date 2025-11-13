@@ -1,0 +1,9 @@
+# Ignore the config file containing sensitive API keys
+app/config.py
+
+# Ignore Python bytecode files
+__pycache__/
+*.pyc
+
+# Ignore log files
+app/logs/

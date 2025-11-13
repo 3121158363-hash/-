@@ -115,32 +115,30 @@ def test_external_plugin_execution(mock_importlib_util, mock_path_exists):
 
 
 @patch('app.agent.google_search')
-def test_adaptation_logic(mock_google_search):
+def test_advanced_adaptation_logic(mock_google_search):
     """
-    Tests the _execute_and_adapt method to ensure that it calls the
-    fallback method when the primary method returns empty data.
+    Tests the advanced, multi-step adaptation engine.
     """
     # Arrange
-    # The primary searches will return empty lists, forcing the fallback.
-    # The fallback search will return a result.
-    mock_google_search.side_effect = [
-        [], # For primary trends search
-        [], # For primary news search
-        [{"url": "https://fallback.com", "title": "Fallback Discussion", "snippet": "General discussion about the topic."}] # For fallback
-    ]
+    # All searches will fail, forcing the agent to try all fallbacks.
+    mock_google_search.return_value = []
     agent = IntellectAgent("test topic")
 
     # Act
-    # We need to consume the generator to execute the logic
     updates = list(agent._execute_and_adapt(
         primary_method=agent._analyze_trends,
-        fallback_method=agent._analyze_trends_fallback,
+        fallback_strategies=[
+            agent._analyze_trends_fallback,
+            lambda: agent._find_market_discussion('trend_analysis')
+        ],
         report_key='trend_analysis'
     ))
 
     # Assert
-    report = agent.report['trend_analysis']
-    assert "Primary trend data source failed." in report['macro_changes'][0]
+    # Check that the final fallback (market discussion) was used.
+    fallback_report = agent.report['trend_analysis_fallback']
+    assert "Fallback for trend_analysis" in fallback_report['analysis_type']
 
-    # Check that the status updates reflect the adaptation
-    assert any("Adapting..." in update for update in updates)
+    # Check that the status updates show the multi-step process
+    assert any("Attempting fallback strategy #1" in u for u in updates)
+    assert any("Attempting fallback strategy #2" in u for u in updates)

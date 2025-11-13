@@ -2,7 +2,12 @@ import json
 import logging
 import os
 import importlib.util
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename='app/logs/agent.log',
+    filemode='w'
+)
 
 try:
     from tools import google_search, view_text_website
@@ -29,7 +34,7 @@ class IntellectAgent:
         # Stage 1: Trend Analysis with Adaptation
         yield from self._execute_and_adapt(
             primary_method=self._analyze_trends,
-            fallback_method=self._analyze_trends_fallback,
+            fallback_strategies=[self._analyze_trends_fallback],
             report_key='trend_analysis'
         )
         logging.info("Trend analysis stage complete.")
@@ -51,7 +56,7 @@ class IntellectAgent:
         # Stage 3: Competitive Landscape with Adaptation
         yield from self._execute_and_adapt(
             primary_method=self._analyze_competition,
-            fallback_method=self._analyze_competition_fallback,
+            fallback_strategies=[self._analyze_competition_fallback],
             report_key='competitive_landscape'
         )
         logging.info("Competitive landscape stage complete.")
@@ -158,25 +163,37 @@ class IntellectAgent:
         self.report['competitive_landscape'] = summary
         yield f"status: Competitive landscape analysis complete."
 
-    def _analyze_trends_fallback(self):
-        logging.warning("Executing fallback trend analysis.")
-        fallback_summary = {"macro_changes": ["Primary trend data source failed. Found general market discussion instead."], "trending_keywords": []}
+    def _find_market_discussion(self, original_report_key):
+        """
+        A generic fallback that finds general market discussion, which can be
+        used as a substitute for multiple types of failed analysis.
+        """
+        logging.warning(f"Executing market discussion fallback for {original_report_key}.")
+        fallback_summary = {
+            "analysis_type": f"Fallback for {original_report_key}",
+            "summary": f"Primary data source for {original_report_key} failed. Found general market discussion instead.",
+            "discussion_points": []
+        }
         query = f'"{self.topic}" "market discussion" OR "future of"'
         results = google_search(query=query)
         if results:
-            fallback_summary["trending_keywords"].append(results[0]['snippet'])
-        self.report['trend_analysis'] = fallback_summary
+            fallback_summary["discussion_points"].append(results[0]['snippet'])
+
+        # To avoid overwriting a partially successful primary analysis,
+        # we store the fallback data under a new key.
+        self.report[f"{original_report_key}_fallback"] = fallback_summary
+
+    def _analyze_trends_fallback(self):
+        """Fallback if primary trend analysis fails."""
+        logging.warning("Executing fallback trend analysis.")
+        self._find_market_discussion('trend_analysis')
 
     def _analyze_competition_fallback(self):
+        """Fallback if primary competition analysis fails."""
         logging.warning("Executing fallback competition analysis.")
-        fallback_summary = {"top_players_and_products": ["Primary competitor data source failed. Found general competitor mentions instead."], "negative_intelligence": []}
-        query = f'"{self.topic}" "competitors" OR "vs"'
-        results = google_search(query=query)
-        if results:
-            fallback_summary["negative_intelligence"].append(results[0]['snippet'])
-        self.report['competitive_landscape'] = fallback_summary
+        self._find_market_discussion('competitive_landscape')
 
-    def _execute_and_adapt(self, primary_method, fallback_method, report_key):
+    def _execute_and_adapt(self, primary_method, fallback_strategies, report_key):
         logging.info(f"Executing adaptive logic for {report_key}...")
         # Consume the generator from the primary method while yielding its updates
         for update in primary_method():
@@ -184,11 +201,21 @@ class IntellectAgent:
 
         result = self.report.get(report_key, {})
         is_empty = not any(v for v in result.values() if isinstance(v, list) and v)
+
         if is_empty:
             logging.warning(f"Primary source for {report_key} returned empty data. Adapting.")
             yield f"status: Primary source for {report_key} returned no data. Adapting..."
-            fallback_method()
-            yield f"status: Fallback for {report_key} complete."
+            for i, fallback in enumerate(fallback_strategies):
+                logging.info(f"Attempting fallback strategy #{i+1} for {report_key}...")
+                yield f"status: Attempting fallback strategy #{i+1} for {report_key}..."
+                fallback()
+                # Check if the fallback succeeded
+                result = self.report.get(f"{report_key}_fallback", {})
+                is_still_empty = not any(v for v in result.values() if isinstance(v, list) and v)
+                if not is_still_empty:
+                    logging.info(f"Fallback strategy #{i+1} for {report_key} succeeded.")
+                    yield f"status: Fallback for {report_key} complete."
+                    break # Stop trying fallbacks if one works
         else:
             logging.info(f"Primary source for {report_key} succeeded.")
 

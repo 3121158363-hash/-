@@ -1,2 +1,5 @@
 Flask
 pytest
+gunicorn
+celery
+redis

@@ -1,5 +1,6 @@
 import pytest
 import time
+from unittest.mock import patch, MagicMock
 from app.server import app as flask_app
 
 @pytest.fixture
@@ -10,33 +11,37 @@ def app():
 def client(app):
     return app.test_client()
 
-def test_full_analysis_workflow(client):
+@patch('app.server.run_analysis_task')
+def test_full_analysis_workflow_with_mock_celery(mock_run_analysis_task, client):
     """
-    Tests the full, asynchronous workflow from starting a task to completion.
+    Tests the full, asynchronous workflow with a mocked Celery task.
     """
+    # Arrange
+    mock_task = MagicMock()
+    mock_task.id = "test_task_id"
+    mock_run_analysis_task.delay.return_value = mock_task
+
     # 1. Start the research task
     response = client.post('/start_research', json={'topic': 'test topic'})
     assert response.status_code == 200
     task_id = response.get_json()['task_id']
-    assert task_id
+    assert task_id == "test_task_id"
 
-    # 2. Poll the status endpoint until completion
-    timeout = 60  # 60-second timeout to prevent infinite loops in tests
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        time.sleep(1)
+    # 2. Simulate Celery task progression
+    # To make the mock serializable, we'll patch the AsyncResult object itself
+    # to return a dictionary from the .info attribute.
+    with patch('app.server.run_analysis_task.AsyncResult') as mock_async_result:
+        mock_instance = mock_async_result.return_value
+
+        # Simulate PROGRESS state
+        mock_instance.state = 'PROGRESS'
+        mock_instance.info = {'status': 'Analyzing trends...'}
         response = client.get(f'/status/{task_id}')
-        status_data = response.get_json()
-        status = status_data.get('status')
+        assert response.get_json()['status'] == 'Analyzing trends...'
 
-        if status == 'awaiting_authorization':
-            # 3. Authorize the plugin if needed
-            client.post(f'/authorize_plugin/{task_id}')
-        elif status == 'complete':
-            # 4. Verify the final report
-            assert status_data['report'] is not None
-            # A simple check to ensure the report is a JSON string as expected
-            assert '"executive_summary"' in status_data['report']
-            return # Test success
-
-    assert False, "Test timed out before analysis completed."
+        # Simulate SUCCESS state
+        mock_instance.state = 'SUCCESS'
+        mock_instance.info = {'status': 'complete', 'report': '{"executive_summary": "Test summary."}'}
+        response = client.get(f'/status/{task_id}')
+        assert response.get_json()['status'] == 'complete'
+        assert "Test summary." in response.get_json()['report']

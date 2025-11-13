@@ -1,50 +1,7 @@
 from flask import Flask, request, jsonify, render_template
-from multiprocessing import Process, Manager
-import uuid
-import json
-from .agent import IntellectAgent
+from .celery_worker import run_analysis_task
 
 app = Flask(__name__)
-
-# Use a multiprocessing Manager to create a shared dictionary for tasks
-manager = Manager()
-tasks = manager.dict()
-
-def run_agent_in_background(task_id, topic, tasks_dict):
-    """
-    This function runs in a separate process, consumes the agent's generator,
-    and updates the shared tasks dictionary.
-    """
-    agent = IntellectAgent(topic)
-    tasks_dict[task_id] = {
-        'status': 'starting',
-        'report': None,
-        'authorization_needed': False
-    }
-
-    for update in agent.run_analysis():
-        task = tasks_dict[task_id] # Get the latest version of the task
-        if update.startswith("status:"):
-            task['status'] = update.replace("status: ", "")
-        elif update.startswith("authorization_required:"):
-            task['authorization_needed'] = True
-            task['status'] = "awaiting_authorization"
-            tasks_dict[task_id] = task # Update the dict
-            # Pause until authorized by the main process
-            while task.get('authorization_needed'):
-                pass # This is a simple spin-lock; a real app might use an Event
-            # After authorization, the main process will have updated the dict
-            task = tasks_dict[task_id] # Re-fetch the task state
-        elif update.startswith("final_update:"):
-            final_data = json.loads(update.replace("final_update: ", ""))
-            task['report'] = final_data['report']
-            task['status'] = final_data['status']
-        tasks_dict[task_id] = task # Update the dict after each change
-
-    task = tasks_dict[task_id]
-    task['status'] = 'complete'
-    tasks_dict[task_id] = task
-
 
 @app.route('/')
 def index():
@@ -57,41 +14,33 @@ def start_research():
         return jsonify({"error": "Topic not provided"}), 400
 
     topic = data['topic']
-    task_id = str(uuid.uuid4())
+    # Submit the task to the Celery queue
+    task = run_analysis_task.delay(topic)
 
-    # Spawn a new process to run the agent's analysis
-    process = Process(target=run_agent_in_background, args=(task_id, topic, tasks))
-    process.start()
-
-    return jsonify({"task_id": task_id})
+    return jsonify({"task_id": task.id})
 
 @app.route('/status/<task_id>', methods=['GET'])
 def get_status(task_id):
-    task = tasks.get(task_id)
-    if not task:
-        # It might take a moment for the task to be created in the background process
-        return jsonify({"status": "initializing"}), 202
+    # Query Celery for the task's status
+    task = run_analysis_task.AsyncResult(task_id)
 
-    return jsonify({
-        "task_id": task_id,
-        "status": task.get('status'),
-        "report": task.get('report')
-    })
+    if task.state == 'PENDING':
+        response = {'status': 'pending'}
+    elif task.state == 'PROGRESS':
+        response = {'status': task.info.get('status')}
+    elif task.state == 'SUCCESS':
+        response = {'status': 'complete', 'report': task.info.get('report')}
+    else:
+        response = {'status': task.state}
 
+    return jsonify(response)
+
+# The authorization endpoint needs a more complex implementation in a Celery
+# architecture (e.g., using a database or another messaging system).
+# For now, this will be a non-functional placeholder.
 @app.route('/authorize_plugin/<task_id>', methods=['POST'])
 def authorize_plugin(task_id):
-    task = tasks.get(task_id)
-    if not task:
-        return jsonify({"error": "Task not found"}), 404
-
-    if task.get('authorization_needed'):
-        # Update the shared dictionary to un-pause the background process
-        task['authorization_needed'] = False
-        task['status'] = 'resuming'
-        tasks[task_id] = task
-        return jsonify({"message": "Plugin authorized. Resuming analysis."})
-    else:
-        return jsonify({"message": "Plugin authorization not currently required."})
+    return jsonify({"message": "Authorization in a distributed system requires a more complex setup. This is a placeholder."})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

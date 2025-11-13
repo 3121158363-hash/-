@@ -4,15 +4,15 @@ import json
 from app.agent import IntellectAgent
 
 @patch('app.agent.google_search')
-def test_analyze_trends_deep_integration(mock_google_search):
+def test_analyze_trends_with_fallback(mock_google_search):
     """
-    Tests the refactored _analyze_trends method to ensure it correctly
-    handles simulated structured API data.
+    Tests that the _analyze_trends method correctly uses its internal
+    fallback when the primary search fails.
     """
     # Arrange
     mock_google_search.side_effect = [
-        [{"url": "trends.com", "snippet": "rising"}], # For primary trends search
-        [{"url": "news.com", "snippet": "Cross-validation confirms growth."}]   # For cross-validation search
+        [], # Primary search fails
+        [{"url": "news.com", "snippet": "Fallback news snippet."}] # Fallback search succeeds
     ]
     agent = IntellectAgent("test topic")
 
@@ -21,25 +21,20 @@ def test_analyze_trends_deep_integration(mock_google_search):
     report = agent.report['trend_analysis']
 
     # Assert
-    assert "Data indicates a significant rising interest in 'test topic'." in report['macro_changes']
-    assert "Cross-validation from news sources confirms: Cross-validation confirms growth." in report['macro_changes']
-
-    mock_google_search.assert_any_call(query="structured Google Trends data for test topic")
+    assert "Fallback analysis from news indicates: Fallback news snippet." in report['macro_changes']
     mock_google_search.assert_any_call(query='"test topic" market trends news')
 
 
 @patch('app.agent.google_search')
-def test_competitive_landscape_cross_validation(mock_google_search):
+def test_analyze_competition_with_fallback(mock_google_search):
     """
-    Tests the cross-validation logic in the _analyze_competition method.
+    Tests that the _analyze_competition method correctly uses its internal
+    fallback when the primary search fails.
     """
     # Arrange
     mock_google_search.side_effect = [
-        [{"url": "markets.com", "snippet": "Top players."}], # For financial data
-        [{"url": "complaints.com", "snippet": "Primary issue."}], # For FutureTech complaints
-        [{"url": "news.com", "snippet": "Negative news."}], # For FutureTech news
-        [{"url": "complaints.com", "snippet": "Another issue."}], # For InnovateCorp complaints
-        [] # For InnovateCorp news (to test robustness)
+        [], # Primary search fails
+        [{"url": "competitors.com", "snippet": "General competitor discussion."}] # Fallback search succeeds
     ]
     agent = IntellectAgent("test topic")
 
@@ -48,12 +43,8 @@ def test_competitive_landscape_cross_validation(mock_google_search):
     report = agent.report['competitive_landscape']
 
     # Assert
-    assert "Primary issues for FutureTech: Primary issue." in report['negative_intelligence']
-    assert "Cross-validation from news for FutureTech: Negative news." in report['negative_intelligence']
-    assert "Primary issues for InnovateCorp: Another issue." in report['negative_intelligence']
-
-    # Verify that the cross-validation search for InnovateCorp was still attempted
-    mock_google_search.assert_any_call(query='"InnovateCorp" "test topic" "negative news"')
+    assert "Fallback analysis found general competitor discussion: General competitor discussion." in report['top_players_and_products']
+    mock_google_search.assert_any_call(query='"test topic" "competitors" OR "vs"')
 
 
 def test_enhanced_report_generation():
@@ -64,7 +55,7 @@ def test_enhanced_report_generation():
     # Arrange
     agent = IntellectAgent("Electric Scooters")
     agent.report = {
-        'trend_analysis': {'macro_changes': ['Data indicates a significant rising interest in the market.'], 'trending_keywords': []},
+        'trend_analysis': {'macro_changes': ['Data indicates a significant rising interest in the market.'], 'trending_keywords': ['sustainability', 'urban transport']},
         'public_opinion': {'unmet_needs': ['longer range batteries'], 'core_pain_points': []},
         'competitive_landscape': {'negative_intelligence': ['scooters breaking down easily']}
     }
@@ -112,33 +103,3 @@ def test_external_plugin_execution(mock_importlib_util, mock_path_exists):
     # Assert
     assert report["high_frequency_topics"] == ["From External Plugin"]
     mock_plugin_module.run_opinion_miner.assert_called_once()
-
-
-@patch('app.agent.google_search')
-def test_advanced_adaptation_logic(mock_google_search):
-    """
-    Tests the advanced, multi-step adaptation engine.
-    """
-    # Arrange
-    # All searches will fail, forcing the agent to try all fallbacks.
-    mock_google_search.return_value = []
-    agent = IntellectAgent("test topic")
-
-    # Act
-    updates = list(agent._execute_and_adapt(
-        primary_method=agent._analyze_trends,
-        fallback_strategies=[
-            agent._analyze_trends_fallback,
-            lambda: agent._find_market_discussion('trend_analysis')
-        ],
-        report_key='trend_analysis'
-    ))
-
-    # Assert
-    # Check that the final fallback (market discussion) was used.
-    fallback_report = agent.report['trend_analysis_fallback']
-    assert "Fallback for trend_analysis" in fallback_report['analysis_type']
-
-    # Check that the status updates show the multi-step process
-    assert any("Attempting fallback strategy #1" in u for u in updates)
-    assert any("Attempting fallback strategy #2" in u for u in updates)

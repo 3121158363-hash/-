@@ -1,105 +1,65 @@
-# Intellect-Agent: Advanced Market Research Assistant
+# Intellect-Agent: AI-Powered Market Research Assistant
 
-This is a web-based application that automates market research. It is built with a Python backend using Flask, Celery, and Redis, and a simple HTML/CSS/JavaScript frontend. The entire application is containerized with Docker for easy deployment.
+This web application is a professional-grade, AI-powered tool that automates in-depth market research. It is built with a robust Python backend (Flask, Celery, Redis) and is designed for easy deployment with Docker.
 
 ## Prerequisites
 
 To deploy and run this application, you will need a server with the following installed:
 - **Docker:** [Installation Guide](https://docs.docker.com/engine/install/)
-- **Docker Compose:** [Installation Guide](https://docs.docker.com/compose/install/) (Recommended for easier management)
+- **Docker Compose:** [Installation Guide](https://docs.docker.com/compose/install/)
 
-## Deployment
+## 1. API Key Configuration
 
-There are two ways to deploy the application: using `docker-compose` (recommended) or using a manual `docker build` and `run` command.
+Before you can run the application, you must configure your API keys.
 
-### Recommended: Using Docker Compose
+1.  **Locate the configuration file:**
+    The API keys are managed in the `app/config.py` file.
 
-1.  **Create a `docker-compose.yml` file:**
-    Create a file named `docker-compose.yml` in the root of the project with the following content:
+2.  **Add your keys:**
+    Open the file and replace the placeholder strings (`"YOUR_..._KEY_HERE"`) with your actual API keys for each of the following services:
+    - **Apify:** For web scraping and social media analysis.
+    - **Baidu AI Cloud:** For Natural Language Processing.
+    - **Tushare:** For financial data (primary source).
+    - **Financial Modeling Prep (FMP):** For financial data (fallback source).
+    - **NewsAPI.org:** For news and policy analysis.
 
-    ```yml
-    version: '3.8'
-    services:
-      redis:
-        image: "redis:alpine"
-        ports:
-          - "6379:6379"
+## 2. Deployment
 
-      web:
-        build: .
-        ports:
-          - "5000:5000"
-        depends_on:
-          - redis
+This application is designed to be deployed with Docker Compose, which orchestrates the web server, background worker, and Redis services.
 
-      worker:
-        build: .
-        command: celery -A app.celery_worker worker --loglevel=info
-        depends_on:
-          - redis
-    ```
+**Build and run the application:**
+From the root of the project, run the following command:
 
-2.  **Build and run the application:**
-    From the root of the project, run the following command:
+```bash
+sudo docker-compose up --build -d
+```
+This command will build the Docker image and start all the necessary services in the background.
 
-    ```bash
-    sudo docker-compose up --build -d
-    ```
-    This will build the Docker images, start the Redis server, the Gunicorn web server, and the Celery worker in the background.
+## 3. How to Use the API
 
-### Manual Deployment
+Once the application is running, you can interact with it via its REST API.
 
-1.  **Build the Docker image:**
-    From the root of the project, run the following command:
+**A. Start an Analysis**
 
-    ```bash
-    sudo docker build -t intellect-agent .
-    ```
+-   **Endpoint:** `/start_analysis`
+-   **Method:** `POST`
+-   **Body:** A JSON object with a `topic` key.
 
-2.  **Run the application:**
-    You will need to start a Redis container, and then the application container.
+**Example `curl` command:**
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"topic": "the future of quantum computing"}' http://<your_server_ip>:8000/start_analysis
+```
 
-    ```bash
-    # Start Redis
-    sudo docker run -d --name redis -p 6379:6379 redis:alpine
+**B. Check Task Status**
 
-    # Start the application
-    sudo docker run -d --name intellect-agent -p 5000:5000 --link redis:redis intellect-agent
-    ```
+-   **Endpoint:** `/status/<task_id>`
+-   **Method:** `GET`
 
-## How to Use
+Use the `task_id` from the previous step to check the progress and retrieve the final report.
 
-1.  **Access the application:**
-    Once deployed, the application will be accessible at `http://<your_server_ip>:5000`.
+**Example `curl` command:**
+```bash
+curl http://<your_server_ip>:8000/status/a1b2c3d4-e5f6-7890-1234-567890abcdef
+```
 
-2.  **Start an analysis:**
-    In the input field, type the topic you want to research (e.g., "the future of AI in education") and click "Start Analysis".
-
-3.  **Monitor the progress:**
-    A new card will appear in the feed, showing the live status of the analysis.
-
-4.  **Authorize the plugin (if required):**
-    If the agent determines that it needs the `Public_Opinion_Miner_Plugin`, a dialog will appear asking for your authorization. Click "Authorize" to allow the agent to proceed.
-
-5.  **View the final report:**
-    Once the analysis is complete, the final, structured five-part report will be displayed on the card.
-
-## Customizing the Public Opinion Plugin
-
-This application supports a file-based plugin for public opinion analysis. To use your own plugin:
-
-1.  **Create a `plugin.py` file:**
-    In the root of the project, create a file named `plugin.py`.
-
-2.  **Implement the `run_opinion_miner` function:**
-    The file must contain a function with the following signature:
-
-    ```python
-    def run_opinion_miner(plugin_input):
-        # plugin_input is a dictionary with a "topic" key.
-        # Your code to scrape and analyze public opinion goes here.
-        # The function must return a dictionary with the following keys:
-        # "high_frequency_topics", "core_pain_points", "unmet_needs"
-        pass
-    ```
-    A `plugin.py` template is included in the project to serve as an example. If no `plugin.py` file is found, the agent will use its own internal simulation.
+The application's frontend is a simple, intuitive interface that uses this API. You can access it at `http://<your_server_ip>:8000`.

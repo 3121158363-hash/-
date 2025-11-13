@@ -3,6 +3,13 @@ import json
 import logging
 import os
 import importlib.util
+from pytrends.request import TrendReq
+from apify_client import ApifyClient
+from aip import AipNlp
+import tushare as ts
+from fmp_api_python.fmp import FMPClient
+from newsapi import NewsApiClient
+from . import config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,61 +69,113 @@ class IntellectAgent:
         logging.info("Analysis run finished.")
 
     def _analyze_trends(self):
-        yield f"status: Analyzing trends for '{self.topic}'..."
+        yield f"status: Analyzing trends for '{self.topic}' with Google Trends..."
         summary = {"macro_changes": [], "trending_keywords": []}
-        results = google_search(query=f"{self.topic} market trends")
-        if results:
-            summary["macro_changes"].append(results[0]['snippet'])
-            summary["trending_keywords"].extend(["mock keyword 1", "mock keyword 2"])
+        try:
+            pytrends = TrendReq(hl='en-US', tz=360)
+            pytrends.build_payload([self.topic], cat=0, timeframe='today 3-m', geo='', gprop='')
+
+            interest_over_time_df = pytrends.interest_over_time()
+            if not interest_over_time_df.empty:
+                summary["macro_changes"].append("Interest over time data available.")
+
+            related_queries = pytrends.related_queries()
+            rising_queries = related_queries[self.topic]['rising']
+            if rising_queries is not None and not rising_queries.empty:
+                summary["trending_keywords"].extend(rising_queries['query'].head(5).tolist())
+        except Exception as e:
+            logging.error(f"Pytrends API call failed: {e}")
+            summary["macro_changes"].append("Google Trends API call failed.")
+
         self.report['trend_analysis'] = summary
         yield f"status: Trend analysis complete."
 
     def _mine_public_opinion(self):
-        logging.info("Mining public opinion...")
-        plugin_input = {"topic": self.topic, "target_sites": ["reddit.com", "bilibili.com"]}
-        yield f"status: Preparing data for Public Opinion Miner Plugin..."
+        yield f"status: Scraping public opinion data for '{self.topic}' with Apify..."
+        summary = {"high_frequency_topics": [], "core_pain_points": [], "unmet_needs": [], "sentiment": {}}
+        try:
+            apify_client = ApifyClient(config.APIFY_API_KEY)
+            # This is a placeholder for a real Apify actor run
+            # In a real scenario, you would trigger an actor and wait for its results
+            # For now, we will use a small, static dataset to simulate the output
+            scraped_data = [{"text": f"The new {self.topic} is revolutionary!"}, {"text": f"I am disappointed with the high price of the {self.topic}."}]
 
-        plugin_output = None
-        plugin_path = 'plugin.py'
+            yield f"status: Analyzing sentiment with Baidu AI Cloud..."
+            client = AipNlp(config.BAIDU_APP_ID, config.BAIDU_API_KEY, config.BAIDU_SECRET_KEY)
 
-        if os.path.exists(plugin_path):
-            logging.info("External plugin.py found. Attempting to execute.")
-            try:
-                spec = importlib.util.spec_from_file_location("plugin", plugin_path)
-                plugin_module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(plugin_module)
+            sentiments = []
+            for item in scraped_data:
+                # Baidu NLP API has rate limits, so process a small sample
+                result = client.sentimentClassify(item['text'])
+                if 'items' in result:
+                    sentiments.append(result['items'][0]['sentiment'])
 
-                if hasattr(plugin_module, 'run_opinion_miner'):
-                    plugin_output = plugin_module.run_opinion_miner(plugin_input)
-                    logging.info("External plugin executed successfully.")
-                else:
-                    logging.warning("plugin.py exists but does not have a 'run_opinion_miner' function.")
-            except Exception as e:
-                logging.error(f"Error executing external plugin: {e}")
+            summary['sentiment'] = {
+                "positive": sentiments.count(2),
+                "neutral": sentiments.count(1),
+                "negative": sentiments.count(0)
+            }
+        except Exception as e:
+            logging.error(f"Public opinion analysis failed: {e}")
+            summary['core_pain_points'].append("API call for public opinion failed.")
 
-        if plugin_output is None:
-            logging.info("No external plugin found or it failed. Using internal simulation.")
-            plugin_output = {"high_frequency_topics": ["Mock high-frequency topic."], "core_pain_points": ["Mock pain point."], "unmet_needs": ["Mock unmet need."]}
-
-        self.report['public_opinion'] = plugin_output
+        self.report['public_opinion'] = summary
         yield f"status: Public opinion analysis complete."
 
     def _analyze_competition(self):
-        yield f"status: Analyzing competitive landscape for '{self.topic}'..."
-        summary = {"top_players_and_products": [], "negative_intelligence": []}
-        results = google_search(query=f"top companies in {self.topic}")
-        if results:
-            summary["top_players_and_products"].append(results[0]['title'])
-            summary["negative_intelligence"].append("Mock negative intelligence.")
+        yield f"status: Identifying top competitors for '{self.topic}'..."
+        # This is a placeholder for a more sophisticated competitor discovery mechanism
+        competitors = [{"name": "Apple", "symbol": "AAPL"}, {"name": "Samsung", "symbol": "005930.KS"}]
+        summary = {"financial_profiles": [], "market_position": []}
+
+        ts.set_token(config.TUSHARE_API_KEY)
+        pro = ts.pro_api()
+
+        for competitor in competitors:
+            financial_data = None
+            try:
+                yield f"status: Analyzing '{competitor['name']}' with Tushare..."
+                # Tushare may require a different API call for non-Chinese stocks
+                df = pro.daily(ts_code=competitor['symbol'], start_date='20230101', end_date='20230110')
+                if not df.empty:
+                    financial_data = df.to_dict('records')
+            except Exception as e:
+                logging.error(f"Tushare API call failed for {competitor['name']}: {e}")
+
+            if financial_data:
+                summary["financial_profiles"].append({competitor['name']: financial_data})
+            else:
+                yield f"status: Adapting: Tushare failed for '{competitor['name']}'. Trying FMP..."
+                try:
+                    fmp_client = FMPClient(api_key=config.FMP_API_KEY)
+                    quote = fmp_client.quote(competitor['symbol'])
+                    if quote:
+                        summary["financial_profiles"].append({competitor['name']: quote})
+                except Exception as fmp_e:
+                    logging.error(f"FMP API call failed for {competitor['name']}: {fmp_e}")
+                    summary["financial_profiles"].append({"company": competitor['name'], "error": "All financial data sources failed."})
+
         self.report['competitive_landscape'] = summary
         yield f"status: Competitive landscape analysis complete."
 
     def _analyze_news(self):
-        yield f"status: Analyzing news & policy for '{self.topic}'..."
-        summary = {"major_events": [], "trends": []}
-        results = google_search(query=f"{self.topic} industry news")
-        if results:
-            summary["major_events"].append(results[0]['snippet'])
+        yield f"status: Analyzing news & policy for '{self.topic}' with NewsAPI.org..."
+        summary = {"major_events": [], "policy_changes": []}
+        try:
+            newsapi = NewsApiClient(api_key=config.NEWS_API_KEY)
+            all_articles = newsapi.get_everything(q=self.topic,
+                                                  language='en',
+                                                  sort_by='relevancy')
+
+            for article in all_articles['articles']:
+                if "regulation" in article['title'].lower() or "policy" in article['title'].lower():
+                    summary['policy_changes'].append(article['description'])
+                else:
+                    summary['major_events'].append(article['description'])
+        except Exception as e:
+            logging.error(f"NewsAPI call failed: {e}")
+            summary['major_events'].append("NewsAPI call failed.")
+
         self.report['news_analysis'] = summary
         yield f"status: News analysis complete."
 

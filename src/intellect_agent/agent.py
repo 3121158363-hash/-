@@ -1,4 +1,4 @@
-# app/agent.py
+# src/intellect_agent/agent.py
 import json
 import logging
 import os
@@ -14,78 +14,9 @@ from . import config
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    filename='app/logs/agent.log',
+    filename='src/intellect_agent/logs/agent.log',
     filemode='w'
 )
-
-def google_search(query):
-    """A mock google search function."""
-    logging.info(f"--- MOCK SEARCH: {query} ---")
-    if "top companies" in query:
-        return [{"url": "https://example.com/mock-data", "title": "TopCorp Example Inc.", "snippet": "TopCorp is a leader in the industry."}]
-    return [{"url": "https://example.com/mock-data", "title": "Mock Search Result", "snippet": "This is a mock result for your query."}]
-
-def view_text_website(url):
-    """A mock website viewer."""
-    logging.info(f"--- MOCK VIEW: {url} ---")
-    return "Mock website content with keywords and analysis."
-
-def mock_apify_scrape(topic):
-    """A mock function to simulate scraping data with Apify."""
-    logging.info(f"--- MOCK APIFY SCRAPE for '{topic}' ---")
-    # Simulate finding user comments on different platforms
-    return [
-        {"platform": "Reddit", "comment": f"I love the new {topic}, the battery life is amazing!"},
-        {"platform": "Twitter", "comment": f"Can't believe how expensive the new {topic} is."},
-        {"platform": "Forum", "comment": f"Hoping they release a version of the {topic} with more color options."},
-    ]
-
-def mock_baidu_nlp_analysis(scraped_data):
-    """A mock function to simulate NLP analysis with Baidu AI Cloud."""
-    logging.info(f"--- MOCK BAIDU NLP ANALYSIS ---")
-    # Simulate classifying sentiment and extracting themes
-    analysis = {
-        "sentiment_distribution": {"positive": 0, "negative": 0, "neutral": 0},
-        "key_themes": [],
-        "unmet_needs": []
-    }
-    for item in scraped_data:
-        if "amazing" in item["comment"]:
-            analysis["sentiment_distribution"]["positive"] += 1
-            analysis["key_themes"].append("Battery Life")
-        elif "expensive" in item["comment"]:
-            analysis["sentiment_distribution"]["negative"] += 1
-            analysis["key_themes"].append("Price")
-        elif "options" in item["comment"]:
-            analysis["sentiment_distribution"]["neutral"] += 1
-            analysis["unmet_needs"].append("More customization")
-
-    return analysis
-
-def mock_tushare_financial_analysis(company_name, fail=False):
-    """A mock function to simulate financial analysis with Tushare."""
-    logging.info(f"--- MOCK TUSHARE ANALYSIS for '{company_name}' ---")
-    if fail:
-        return None # Simulate an API failure
-    return {"company": company_name, "market_cap": "1 Trillion USD", "pe_ratio": 30}
-
-def mock_fmp_financial_analysis(company_name):
-    """A mock function to simulate fallback financial analysis with FMP."""
-    logging.info(f"--- MOCK FMP FALLBACK ANALYSIS for '{company_name}' ---")
-    return {"company": company_name, "stock_price": "$250", "dividend_yield": "1.5%"}
-
-def mock_newsapi_search(topic):
-    """A mock function to simulate searching for news with NewsAPI.org."""
-    logging.info(f"--- MOCK NEWSAPI SEARCH for '{topic}' ---")
-    return [
-        {"source": "TechCrunch", "title": f"The Rise of {topic}", "summary": "A new report shows exponential growth in the {topic} sector."},
-        {"source": "Wired", "title": f"New Regulations Impact {topic} Market", "summary": "Governments are introducing new policies that could reshape the industry."},
-    ]
-
-def mock_google_trends(topic):
-    """A mock function to simulate getting trend data from Google Trends."""
-    logging.info(f"--- MOCK GOOGLE TRENDS for '{topic}' ---")
-    return {"rising_queries": [f"{topic} innovations", f"best {topic} 2025"], "interest_over_time": "High"}
 
 class IntellectAgent:
     def __init__(self, topic):
@@ -139,7 +70,7 @@ class IntellectAgent:
             related_queries = pytrends.related_queries()
             rising_queries = related_queries[self.topic]['rising']
             if rising_queries is not None and not rising_queries.empty:
-                summary["trending_keywords"].extend(rising_queries.to_frame().head()['query'].values.tolist())
+                summary["trending_keywords"].extend(rising_queries['query'].tolist())
         except Exception as e:
             logging.error(f"Pytrends API call failed: {e}")
             summary["macro_changes"].append("Google Trends API call failed.")
@@ -153,8 +84,6 @@ class IntellectAgent:
         try:
             apify_client = ApifyClient(config.APIFY_API_KEY)
             # This is a placeholder for a real Apify actor run
-            # In a real scenario, you would trigger an actor and wait for its results
-            # For now, we will use a small, static dataset to simulate the output
             scraped_data = [{"text": f"The new {self.topic} is revolutionary!"}, {"text": f"I am disappointed with the high price of the {self.topic}."}]
 
             yield f"status: Analyzing sentiment with Baidu AI Cloud..."
@@ -162,7 +91,6 @@ class IntellectAgent:
 
             sentiments = []
             for item in scraped_data:
-                # Baidu NLP API has rate limits, so process a small sample
                 result = client.sentimentClassify(item['text'])
                 if 'items' in result:
                     sentiments.append(result['items'][0]['sentiment'])
@@ -181,7 +109,6 @@ class IntellectAgent:
 
     def _analyze_competition(self):
         yield f"status: Identifying top competitors for '{self.topic}'..."
-        # This is a placeholder for a more sophisticated competitor discovery mechanism
         competitors = [{"name": "Apple", "symbol": "AAPL"}, {"name": "Samsung", "symbol": "005930.KS"}]
         summary = {"financial_profiles": [], "market_position": []}
 
@@ -192,7 +119,6 @@ class IntellectAgent:
             financial_data = None
             try:
                 yield f"status: Analyzing '{competitor['name']}' with Tushare..."
-                # Tushare may require a different API call for non-Chinese stocks
                 df = pro.daily(ts_code=competitor['symbol'], start_date='20230101', end_date='20230110')
                 if not df.empty:
                     financial_data = df.to_dict('records')

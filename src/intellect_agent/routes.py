@@ -1,6 +1,6 @@
-# app/routes.py
+# src/intellect_agent/routes.py
 from flask import Blueprint, request, jsonify, current_app
-from .tasks import run_analysis_task
+from intellect_agent.tasks import run_analysis_task
 
 main = Blueprint('main', __name__)
 

@@ -1,14 +1,15 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import json
-from app.agent import IntellectAgent
+import pandas as pd
+from intellect_agent.agent import IntellectAgent
 
-@patch('app.agent.NewsApiClient')
-@patch('app.agent.FMPClient')
-@patch('app.agent.ts.pro_api')
-@patch('app.agent.AipNlp')
-@patch('app.agent.ApifyClient')
-@patch('app.agent.TrendReq')
+@patch('intellect_agent.agent.NewsApiClient')
+@patch('intellect_agent.agent.FMPClient')
+@patch('intellect_agent.agent.ts.pro_api')
+@patch('intellect_agent.agent.AipNlp')
+@patch('intellect_agent.agent.ApifyClient')
+@patch('intellect_agent.agent.TrendReq')
 def test_full_analysis_pipeline_with_mocked_apis(
     mock_trend_req, mock_apify, mock_aip_nlp, mock_tushare, mock_fmp, mock_newsapi
 ):
@@ -20,22 +21,30 @@ def test_full_analysis_pipeline_with_mocked_apis(
     # Arrange: Configure all the mock clients to return predictable data
 
     # Mock for Google Trends
-    mock_rising_df = MagicMock()
-    mock_rising_df.empty = False
-    mock_rising_df.to_frame.return_value.head.return_value.values.tolist.return_value = ["e-scooter laws", "bike sharing apps"]
-    mock_trend_req.return_value.related_queries.return_value = {'Sustainable Urban Mobility': {'rising': mock_rising_df}}
-    mock_trend_req.return_value.interest_over_time.return_value = MagicMock(empty=False)
+    # Create a realistic DataFrame for the 'rising' queries
+    fake_rising_df = pd.DataFrame({
+        'query': ["e-scooter laws", "bike sharing apps"],
+        'value': [100, 90]
+    })
+    mock_instance = mock_trend_req.return_value
+    mock_instance.related_queries.return_value = {
+        'Sustainable Urban Mobility': {'rising': fake_rising_df}
+    }
+    mock_instance.interest_over_time.return_value = pd.DataFrame({'Sustainable Urban Mobility': [50, 55, 60]})
 
     # Mock for Apify & Baidu AI Cloud
-    mock_apify.return_value.actor.return_value.call.return_value = {"output": [{"text": "Sample comment 1"}, {"text": "Sample comment 2"}]}
+    mock_apify_instance = mock_apify.return_value
+    mock_apify_instance.actor.return_value.call.return_value = {"output": [{"text": "Sample comment 1"}, {"text": "Sample comment 2"}]}
     mock_aip_nlp.return_value.sentimentClassify.return_value = {'items': [{'sentiment': 2}]}
 
     # Mock for Tushare (simulating failure) & FMP (fallback)
-    mock_tushare.return_value.daily.return_value = MagicMock(empty=True)
-    mock_fmp.return_value.quote.return_value = [{"symbol": "AAPL", "price": 150.0}]
+    mock_tushare.return_value.daily.return_value = pd.DataFrame() # Simulate Tushare failure
+    mock_fmp_instance = mock_fmp.return_value
+    mock_fmp_instance.quote.return_value = [{"symbol": "AAPL", "price": 150.0}]
 
     # Mock for NewsAPI.org
-    mock_newsapi.return_value.get_everything.return_value = {"articles": [{"title": "New Tech", "description": "A breakthrough in urban mobility."}]}
+    mock_newsapi_instance = mock_newsapi.return_value
+    mock_newsapi_instance.get_everything.return_value = {"articles": [{"title": "New Tech", "description": "A breakthrough in urban mobility."}]}
 
     agent = IntellectAgent("Sustainable Urban Mobility")
 

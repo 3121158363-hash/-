@@ -1,6 +1,6 @@
-# app/__init__.py
+# src/intellect_agent/__init__.py
 from flask import Flask
-from . import routes
+from intellect_agent import routes
 
 def create_app():
     """Application factory for the Flask app."""

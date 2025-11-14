@@ -1,8 +1,8 @@
-# app/tasks.py
+# src/intellect_agent/tasks.py
 from celery import Celery, Task
 from celery.signals import worker_ready
 import logging
-from .config import CELERY_BROKER_URL, CELERY_RESULT_BACKEND
+from intellect_agent.config import CELERY_BROKER_URL, CELERY_RESULT_BACKEND
 
 # Configure Celery
 celery_app = Celery(
@@ -26,7 +26,7 @@ def run_analysis_task(self, topic):
     The background task that runs the IntellectAgent analysis.
     Updates its state with progress reports from the agent.
     """
-    from .agent import IntellectAgent
+    from intellect_agent.agent import IntellectAgent
     agent = IntellectAgent(topic)
     final_report = None
 

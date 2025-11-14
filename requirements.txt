@@ -4,10 +4,3 @@ gunicorn
 celery
 redis
 pandas
-apify-client
-newsapi-python
-tushare
-fmp-api-python
-baidu-aip
-pytrends
-chardet

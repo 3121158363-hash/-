@@ -11,3 +11,4 @@ fmp-api-python
 baidu-aip
 pytrends
 chardet
+python-dotenv

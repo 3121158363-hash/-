@@ -1,22 +1,18 @@
 # src/intellect_agent/config.py
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- API Key Configuration ---
-# Replace the placeholder values with your actual API keys.
-
-# Social Media & Scraping
-APIFY_API_KEY = "YOUR_APIFY_API_KEY_HERE"
-
-# AI & NLP
-BAIDU_APP_ID = "YOUR_BAIDU_APP_ID_HERE"
-BAIDU_API_KEY = "YOUR_BAIDU_API_KEY_HERE"
-BAIDU_SECRET_KEY = "YOUR_BAIDU_SECRET_KEY_HERE"
-
-# Financial Data
-TUSHARE_API_KEY = "YOUR_TUSHARE_API_KEY_HERE"
-FMP_API_KEY = "YOUR_FMP_API_KEY_HERE" # Fallback
-
-# News
-NEWS_API_KEY = "YOUR_NEWS_API_KEY_HERE"
+# Load API keys from environment variables
+APIFY_API_KEY = os.getenv("APIFY_API_KEY")
+BAIDU_APP_ID = os.getenv("BAIDU_APP_ID")
+BAIDU_API_KEY = os.getenv("BAIDU_API_KEY")
+BAIDU_SECRET_KEY = os.getenv("BAIDU_SECRET_KEY")
+TUSHARE_API_KEY = os.getenv("TUSHARE_API_KEY")
+FMP_API_KEY = os.getenv("FMP_API_KEY")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
 # --- System Configuration ---
 

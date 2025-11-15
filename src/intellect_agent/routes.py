@@ -36,3 +36,31 @@ def get_status(task_id):
         response['result'] = task.result
 
     return jsonify(response)
+
+@main.route('/api/keys', methods=['GET'])
+def get_keys():
+    """
+    Retrieves the current API keys from the .env file.
+    """
+    try:
+        # For security, this should have authentication in a real app
+        from dotenv import dotenv_values
+        keys = dotenv_values(".env")
+        return jsonify(keys)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@main.route('/api/keys', methods=['POST'])
+def update_keys():
+    """
+    Updates the API keys in the .env file.
+    """
+    try:
+        # For security, this should have authentication in a real app
+        from dotenv import set_key
+        data = request.get_json()
+        for key, value in data.items():
+            set_key(".env", key, value)
+        return jsonify({"message": "API keys updated successfully."}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

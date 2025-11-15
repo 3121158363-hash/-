@@ -43,11 +43,16 @@ Once the application is running, you can interact with it via its REST API.
 
 -   **Endpoint:** `/start_analysis`
 -   **Method:** `POST`
--   **Body:** A JSON object with a `topic` key.
+-   **Body:** A JSON object with a `topic` key and an optional `deep_dive` boolean (defaults to `false`).
 
-**Example `curl` command:**
+**Example `curl` command (Standard Analysis):**
 ```bash
 curl -X POST -H "Content-Type: application/json" -d '{"topic": "the future of quantum computing"}' http://<your_server_ip>:8000/start_analysis
+```
+
+**Example `curl` command (Deep Dive Analysis):**
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"topic": "the future of quantum computing", "deep_dive": true}' http://<your_server_ip>:8000/start_analysis
 ```
 
 **B. Check Task Status**

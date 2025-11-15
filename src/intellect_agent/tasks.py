@@ -21,7 +21,7 @@ class AnalysisTask(Task):
         logging.error(f'{task_id} failed: {exc}')
 
 @celery_app.task(bind=True, base=AnalysisTask)
-def run_analysis_task(self, topic):
+def run_analysis_task(self, topic, deep_dive=False):
     """
     The background task that runs the IntellectAgent analysis.
     Updates its state with progress reports from the agent.
@@ -30,7 +30,7 @@ def run_analysis_task(self, topic):
     agent = IntellectAgent(topic)
     final_report = None
 
-    for update in agent.run_analysis():
+    for update in agent.run_analysis(deep_dive=deep_dive):
         if update.startswith('status:'):
             # Report progress
             self.update_state(state='PROGRESS', meta={'status': update})

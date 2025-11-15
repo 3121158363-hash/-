@@ -15,7 +15,8 @@ def start_analysis():
         return jsonify({"error": "Missing 'topic' in request body"}), 400
 
     topic = data['topic']
-    task = run_analysis_task.delay(topic)
+    deep_dive = data.get('deep_dive', False) # Default to False if not provided
+    task = run_analysis_task.delay(topic, deep_dive=deep_dive)
 
     return jsonify({"task_id": task.id}), 202
 

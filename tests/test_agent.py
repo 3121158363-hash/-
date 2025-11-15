@@ -44,7 +44,7 @@ def test_full_analysis_pipeline_with_mocked_apis(
 
     # Mock for NewsAPI.org
     mock_newsapi_instance = mock_newsapi.return_value
-    mock_newsapi_instance.get_everything.return_value = {"articles": [{"title": "New Tech", "description": "A breakthrough in urban mobility."}]}
+    mock_newsapi_instance.get_top_headlines.return_value = {"articles": [{"title": "New Tech", "description": "A breakthrough in urban mobility."}]}
 
     agent = IntellectAgent("Sustainable Urban Mobility")
 

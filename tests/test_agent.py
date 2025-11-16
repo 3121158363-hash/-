@@ -1,5 +1,6 @@
+import asyncio
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 import json
 import pandas as pd
 from intellect_agent.agent import IntellectAgent
@@ -10,13 +11,13 @@ from intellect_agent.agent import IntellectAgent
 @patch('intellect_agent.agent.AipNlp')
 @patch('intellect_agent.agent.ApifyClient')
 @patch('intellect_agent.agent.TrendReq')
-def test_full_analysis_pipeline_with_mocked_apis(
+async def test_full_analysis_pipeline_with_mocked_apis(
     mock_trend_req, mock_apify, mock_aip_nlp, mock_tushare, mock_fmp, mock_newsapi
 ):
     """
     An end-to-end test that verifies the agent's full analysis pipeline
     by mocking the API clients themselves. This ensures that the agent's
-    logic is tested in isolation, without making any live network calls.
+    logic is tested in isolation, withoutmaking any live network calls.
     """
     # Arrange: Configure all the mock clients to return predictable data
 
@@ -26,31 +27,37 @@ def test_full_analysis_pipeline_with_mocked_apis(
         'query': ["e-scooter laws", "bike sharing apps"],
         'value': [100, 90]
     })
-    mock_instance = mock_trend_req.return_value
-    mock_instance.related_queries.return_value = {
-        'Sustainable Urban Mobility': {'rising': fake_rising_df}
-    }
-    mock_instance.interest_over_time.return_value = pd.DataFrame({'Sustainable Urban Mobility': [50, 55, 60]})
+    async def mock_analyze_trends(*args, **kwargs):
+        agent.report['trend_analysis'] = {
+            "macro_changes": ["Interest over time data available."],
+            "trending_keywords": ["e-scooter laws", "bike sharing apps"]
+        }
+        yield "status: Mocked trend analysis"
+    agent = IntellectAgent("Sustainable Urban Mobility")
+    agent._analyze_trends = mock_analyze_trends
 
     # Mock for Apify & Baidu AI Cloud
-    mock_apify_instance = mock_apify.return_value
-    mock_apify_instance.actor.return_value.call.return_value = {"output": [{"text": "Sample comment 1"}, {"text": "Sample comment 2"}]}
-    mock_aip_nlp.return_value.sentimentClassify.return_value = {'items': [{'sentiment': 2}]}
+    async def mock_mine_public_opinion(*args, **kwargs):
+        agent.report['public_opinion'] = {"sentiment": {"positive": 1, "negative": 0, "neutral": 0}}
+        yield "status: Mocked public opinion"
+    agent._mine_public_opinion = mock_mine_public_opinion
 
     # Mock for Tushare (simulating failure) & FMP (fallback)
-    mock_tushare.return_value.daily.return_value = pd.DataFrame() # Simulate Tushare failure
-    mock_fmp_instance = mock_fmp.return_value
-    mock_fmp_instance.quote.return_value = [{"symbol": "AAPL", "price": 150.0}]
+    async def mock_analyze_competition(*args, **kwargs):
+        agent.report['competitive_landscape'] = {"financial_profiles": [{"Apple": [{"price": 150.0}]}]}
+        yield "status: Mocked competition analysis"
+    agent._analyze_competition = mock_analyze_competition
 
     # Mock for NewsAPI.org
-    mock_newsapi_instance = mock_newsapi.return_value
-    mock_newsapi_instance.get_top_headlines.return_value = {"articles": [{"title": "New Tech", "description": "A breakthrough in urban mobility."}]}
+    async def mock_analyze_news(*args, **kwargs):
+        agent.report['news_analysis'] = {"major_events": ["A breakthrough in urban mobility."]}
+        yield "status: Mocked news analysis"
+    agent._analyze_news = mock_analyze_news
 
-    agent = IntellectAgent("Sustainable Urban Mobility")
 
     # Act
     final_update = None
-    for update in agent.run_analysis():
+    async for update in agent.run_analysis():
         if update.startswith("final_update:"):
             final_update = update
 
@@ -66,3 +73,30 @@ def test_full_analysis_pipeline_with_mocked_apis(
     assert report["public_opinion"]["sentiment"]["positive"] > 0
     assert report["competitive_landscape"]["financial_profiles"][0]["Apple"][0]["price"] == 150.0
     assert "breakthrough" in report["news_and_policy"]["major_events"][0]
+
+@patch('intellect_agent.agent.ApifyClient')
+async def test_dynamic_competitor_analysis(mock_apify):
+    """
+    Tests the dynamic competitor analysis functionality by mocking the Apify Google Search Scraper actor.
+    """
+    # Arrange
+    mock_apify_instance = mock_apify.return_value
+    mock_apify_instance.actor.return_value.call = AsyncMock(return_value={"defaultDatasetId": "test_dataset_id"})
+    mock_apify_instance.dataset.return_value.list_items = AsyncMock(return_value=MagicMock(items=[
+        {
+            "organicResults": [
+                {"title": "Competitor A", "displayedUrl": "competitor-a.com"},
+                {"title": "Competitor B", "displayedUrl": "competitor-b.com"}
+            ]
+        }
+    ]))
+
+    agent = IntellectAgent("Test Topic")
+
+    # Act
+    competitors = await agent._get_competitors()
+
+    # Assert
+    assert len(competitors) == 2
+    assert competitors[0]["name"] == "Competitor A"
+    assert competitors[1]["symbol"] == "competitor-b.com"

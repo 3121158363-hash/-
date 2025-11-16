@@ -3,7 +3,6 @@ pytest
 gunicorn
 celery
 redis
-pandas
 apify-client
 newsapi-python
 tushare
@@ -12,3 +11,5 @@ baidu-aip
 pytrends
 chardet
 python-dotenv
+pandas
+pytest-asyncio

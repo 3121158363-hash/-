@@ -20,6 +20,8 @@ class AnalysisTask(Task):
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         logging.error(f'{task_id} failed: {exc}')
 
+import asyncio
+
 @celery_app.task(bind=True, base=AnalysisTask)
 def run_analysis_task(self, topic, deep_dive=False):
     """
@@ -30,13 +32,16 @@ def run_analysis_task(self, topic, deep_dive=False):
     agent = IntellectAgent(topic)
     final_report = None
 
-    for update in agent.run_analysis(deep_dive=deep_dive):
-        if update.startswith('status:'):
-            # Report progress
-            self.update_state(state='PROGRESS', meta={'status': update})
-        elif update.startswith('final_update:'):
-            # Capture the final report
-            final_data_json = update.replace('final_update:', '', 1)
-            final_report = final_data_json # The result is the final report string
+    async def main():
+        nonlocal final_report
+        async for update in agent.run_analysis(deep_dive=deep_dive):
+            if update.startswith('status:'):
+                # Report progress
+                self.update_state(state='PROGRESS', meta={'status': update})
+            elif update.startswith('final_update:'):
+                # Capture the final report
+                final_data_json = update.replace('final_update:', '', 1)
+                final_report = final_data_json # The result is the final report string
 
+    asyncio.run(main())
     return final_report

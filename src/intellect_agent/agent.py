@@ -1,4 +1,5 @@
 # src/intellect_agent/agent.py
+import asyncio
 import json
 import logging
 import os
@@ -25,25 +26,29 @@ class IntellectAgent:
         self.status = "Idle"
         logging.info(f"IntellectAgent initialized for topic: {self.topic}")
 
-    def run_analysis(self, deep_dive=False):
+    async def run_analysis(self, deep_dive=False):
         logging.info(f"Starting analysis run... (Deep Dive: {deep_dive})")
         self.status = "Starting analysis..."
         yield f"status: {self.status}"
 
         # Stage 1: Trend Analysis
-        yield from self._analyze_trends(deep_dive=deep_dive)
+        async for status in self._analyze_trends(deep_dive=deep_dive):
+            yield status
         logging.info("Trend analysis stage complete.")
 
         # Stage 2: Public Opinion Mining
-        yield from self._mine_public_opinion(deep_dive=deep_dive)
+        async for status in self._mine_public_opinion(deep_dive=deep_dive):
+            yield status
         logging.info("Public opinion stage complete.")
 
         # Stage 3: Competitive Landscape
-        yield from self._analyze_competition(deep_dive=deep_dive)
+        async for status in self._analyze_competition(deep_dive=deep_dive):
+            yield status
         logging.info("Competitive landscape stage complete.")
 
         # Stage 4: News Analysis
-        yield from self._analyze_news(deep_dive=deep_dive)
+        async for status in self._analyze_news(deep_dive=deep_dive):
+            yield status
         logging.info("News analysis stage complete.")
 
         # Stage 5: Final Report Generation
@@ -56,18 +61,18 @@ class IntellectAgent:
         yield f"final_update: {json.dumps({'status': self.status, 'report': final_report_str})}"
         logging.info("Analysis run finished.")
 
-    def _analyze_trends(self, deep_dive=False):
+    async def _analyze_trends(self, deep_dive=False):
         yield f"status: Analyzing trends for '{self.topic}' with Google Trends..."
         summary = {"macro_changes": [], "trending_keywords": []}
         try:
             pytrends = TrendReq(hl='en-US', tz=360)
-            pytrends.build_payload([self.topic], cat=0, timeframe='today 3-m', geo='', gprop='')
+            await asyncio.to_thread(pytrends.build_payload, [self.topic], cat=0, timeframe='today 3-m', geo='', gprop='')
 
-            interest_over_time_df = pytrends.interest_over_time()
+            interest_over_time_df = await asyncio.to_thread(pytrends.interest_over_time)
             if not interest_over_time_df.empty:
                 summary["macro_changes"].append("Interest over time data available.")
 
-            related_queries = pytrends.related_queries()
+            related_queries = await asyncio.to_thread(pytrends.related_queries)
             rising_queries = related_queries[self.topic]['rising']
             if rising_queries is not None and not rising_queries.empty:
                 summary["trending_keywords"].extend(rising_queries['query'].tolist())
@@ -78,7 +83,7 @@ class IntellectAgent:
         self.report['trend_analysis'] = summary
         yield f"status: Trend analysis complete."
 
-    def _mine_public_opinion(self, deep_dive=False):
+    async def _mine_public_opinion(self, deep_dive=False):
         yield f"status: Scraping public opinion data for '{self.topic}' with Apify..."
         summary = {"high_frequency_topics": [], "core_pain_points": [], "unmet_needs": [], "sentiment": {}}
         try:
@@ -86,19 +91,22 @@ class IntellectAgent:
 
             max_results = 2000 if deep_dive else 200
             yield f"status: (Deep Dive: {deep_dive}) Scraping up to {max_results} items..."
-            # This is a placeholder for a real Apify actor run
-            scraped_data = [{"text": f"The new {self.topic} is revolutionary!"}, {"text": f"I am disappointed with the high price of the {self.topic}."}] * (max_results // 2)
+
+            actor_run_info = await apify_client.actor("apidojo/tweet-scraper").call(
+                run_input={"queries": [self.topic], "max_tweets": max_results}
+            )
+
+            dataset_items = await apify_client.dataset(actor_run_info["defaultDatasetId"]).list_items().items
+            scraped_data = [{"text": item.get("text", "")} for item in dataset_items]
 
             yield f"status: Analyzing sentiment with Baidu AI Cloud..."
             client = AipNlp(config.BAIDU_APP_ID, config.BAIDU_API_KEY, config.BAIDU_SECRET_KEY)
 
             sentiments = []
-            # Batching: Process comments in chunks of 10
-            for i in range(0, len(scraped_data), 10):
-                batch = [item['text'] for item in scraped_data[i:i+10]]
-                # The Baidu NLP SDK does not support batching directly, so we send multiple texts in one request.
-                for text in batch:
-                    result = client.sentimentClassify(text)
+            for item in scraped_data:
+                text = item.get("text")
+                if text:
+                    result = await asyncio.to_thread(client.sentimentClassify, text)
                     if 'items' in result:
                         sentiments.append(result['items'][0]['sentiment'])
 
@@ -114,11 +122,37 @@ class IntellectAgent:
         self.report['public_opinion'] = summary
         yield f"status: Public opinion analysis complete."
 
-    def _analyze_competition(self, deep_dive=False):
-        yield f"status: Identifying top competitors for '{self.topic}'..."
-        competitors = [{"name": "Apple", "symbol": "AAPL"}, {"name": "Samsung", "symbol": "005930.KS"}]
-        summary = {"financial_profiles": [], "market_position": []}
+    async def _get_competitors(self, deep_dive=False):
+        """
+        Asynchronously identifies competitors using Apify's Google Search Scraper actor.
+        """
+        try:
+            apify_client = ApifyClient(config.APIFY_API_KEY)
+            actor_run_info = await apify_client.actor("apify/google-search-scraper").call(
+                run_input={"queries": f"top competitors of {self.topic}", "resultsPerPage": 5}
+            )
 
+            dataset_items = (await apify_client.dataset(actor_run_info["defaultDatasetId"]).list_items()).items
+
+            competitors = []
+            for item in dataset_items:
+                if 'organicResults' in item:
+                    for result in item['organicResults']:
+                        competitors.append({"name": result['title'], "symbol": result['displayedUrl']})
+
+            return competitors
+        except Exception as e:
+            logging.error(f"Failed to get competitors from Apify: {e}")
+            return []
+
+    async def _analyze_competition(self, deep_dive=False):
+        yield f"status: Identifying top competitors for '{self.topic}' with Apify..."
+        competitors = await self._get_competitors(deep_dive=deep_dive)
+        if not competitors:
+            yield f"status: Could not identify competitors for '{self.topic}'."
+            return
+
+        summary = {"financial_profiles": [], "market_position": []}
         ts.set_token(config.TUSHARE_API_KEY)
         pro = ts.pro_api()
         fmp_client = FMPClient(api_key=config.FMP_API_KEY)
@@ -129,9 +163,9 @@ class IntellectAgent:
                 yield f"status: Analyzing '{competitor['name']}' with Tushare..."
                 if deep_dive:
                     yield f"status: (Deep Dive) Fetching 90-day time series..."
-                    df = pro.daily(ts_code=competitor['symbol'], start_date='20230101', end_date='20230331')
+                    df = await asyncio.to_thread(pro.daily, ts_code=competitor['symbol'], start_date='20230101', end_date='20230331')
                 else:
-                    df = pro.realtime_quotes(ts_code=competitor['symbol'])
+                    df = await asyncio.to_thread(pro.realtime_quotes, ts_code=competitor['symbol'])
                 if not df.empty:
                     financial_data = df.to_dict('records')
             except Exception as e:
@@ -143,9 +177,9 @@ class IntellectAgent:
                 yield f"status: Adapting: Tushare failed for '{competitor['name']}'. Trying FMP..."
                 try:
                     if deep_dive:
-                         quote = fmp_client.historical_price_full(competitor['symbol'], from_date='2023-01-01', to_date='2023-03-31')
+                        quote = await asyncio.to_thread(fmp_client.historical_price_full, competitor['symbol'], from_date='2023-01-01', to_date='2023-03-31')
                     else:
-                        quote = fmp_client.quote(competitor['symbol'])
+                        quote = await asyncio.to_thread(fmp_client.quote, competitor['symbol'])
                     if quote:
                         summary["financial_profiles"].append({competitor['name']: quote})
                 except Exception as fmp_e:
@@ -155,7 +189,7 @@ class IntellectAgent:
         self.report['competitive_landscape'] = summary
         yield f"status: Competitive landscape analysis complete."
 
-    def _analyze_news(self, deep_dive=False):
+    async def _analyze_news(self, deep_dive=False):
         yield f"status: Analyzing news & policy for '{self.topic}' with NewsAPI.org..."
         summary = {"major_events": [], "policy_changes": []}
         try:
@@ -163,11 +197,11 @@ class IntellectAgent:
 
             if deep_dive:
                 yield f"status: (Deep Dive) Searching full news archive..."
-                all_articles = newsapi.get_everything(q=self.topic,
+                all_articles = await asyncio.to_thread(newsapi.get_everything, q=self.topic,
                                                       language='en',
                                                       sort_by='relevancy')
             else:
-                all_articles = newsapi.get_top_headlines(q=self.topic,
+                all_articles = await asyncio.to_thread(newsapi.get_top_headlines, q=self.topic,
                                                          language='en',
                                                          category='business')
 

@@ -2,13 +2,15 @@ version: '3.8'
 
 services:
   redis:
-    image: "redis:alpine"
+    build: ./redis
     ports:
       - "6379:6379"
 
   web:
-    build: .
-    command: gunicorn 'app:create_app()' --bind 0.0.0.0:8000
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: gunicorn 'intellect_agent:create_app()' --bind 0.0.0.0:8000
     volumes:
       - .:/usr/src/app
     ports:
@@ -17,8 +19,10 @@ services:
       - redis
 
   worker:
-    build: .
-    command: celery -A app.tasks.celery_app worker --loglevel=info
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A intellect_agent.tasks.celery_app worker --loglevel=info
     volumes:
       - .:/usr/src/app
     depends_on:

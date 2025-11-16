@@ -6,4 +6,9 @@ __pycache__/
 *.pyc
 
 # Ignore log files
-app/logs/
+*.log
+src/intellect_agent/logs/
+
+# Ignore build artifacts
+*.egg-info
+dump.rdb

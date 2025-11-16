@@ -17,7 +17,7 @@ Before you can run the application, you must configure your API keys.
 
 2.  **Add your keys:**
     Open the file and replace the placeholder strings (`"YOUR_..._KEY_HERE"`) with your actual API keys for each of the following services:
-    - **Apify:** For web scraping and social media analysis.
+- **Apify:** For web scraping, social media analysis, and dynamic competitor identification.
     - **Baidu AI Cloud:** For Natural Language Processing.
     - **Tushare:** For financial data (primary source).
     - **Financial Modeling Prep (FMP):** For financial data (fallback source).
@@ -35,7 +35,16 @@ sudo docker-compose up --build -d
 ```
 This command will build the Docker image and start all the necessary services in the background.
 
-## 3. How to Use the API
+## 3. Development
+
+To run the tests, you will need to install the project in editable mode and install the `pytest-asyncio` package:
+
+```bash
+python -m pip install -e .
+python -m pip install pytest-asyncio
+```
+
+## 4. How to Use the API
 
 Once the application is running, you can interact with it via its REST API.
 
